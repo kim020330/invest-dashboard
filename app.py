@@ -46,7 +46,13 @@ st.sidebar.header("🔍 심층 분석 종목 검색")
 ticker_symbol = st.sidebar.text_input("티커를 입력하세요 (예: AAPL, MSFT, NVDA)", "AAPL").upper()
 ticker_data = yf.Ticker(ticker_symbol)
 
-info = ticker_data.info
+# 에러가 자주 나는 info 대신 데이터를 안전하게 가져오기
+try:
+    info = ticker_data.info
+except:
+    info = {} # 데이터를 못 가져오면 빈 상자로 만들기
+
+# 기업 이름이 없으면 그냥 티커(AAPL 등)를 이름으로 쓰기
 company_name = info.get('shortName', ticker_symbol)
 current_price = info.get('currentPrice', 0)
 
