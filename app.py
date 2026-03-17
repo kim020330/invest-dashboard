@@ -158,11 +158,56 @@ with tab2:
         else:
             st.dataframe(financials)
 
+# [탭 3] AI 뉴스 & 시장 감정 분석 리뉴얼
 with tab3:
-    st.write("💡 회사에 안 좋은 사건이나 엄청난 호재가 있는지 기사 제목만 가볍게 훑어보세요.")
+    st.subheader("📰 실시간 AI 뉴스 브리핑")
+    st.markdown("---")
+    
+    # 💡 초보자를 위한 가이드 추가
+    st.info("""
+    **💡 뉴스 읽는 팁:** - 🟢 **호재:** 주가 상승에 도움을 줄 수 있는 긍정적인 소식입니다.
+    - 🔴 **주의:** 주가 하락이나 리스크 관리가 필요한 소식입니다.
+    - ⚪ **중립:** 일반적인 기업 정보나 공시 내용입니다.
+    """)
+
     news_list = ticker_data.news
     if news_list:
-        for news in news_list[:5]:
+        for news in news_list[:8]: # 최신 뉴스 8개까지 표시
             title = news.get('title', '제목 없음')
+            publisher = news.get('publisher', '출처 없음')
             link = news.get('link', '#')
-            st.markdown(f"- **[{title}]({link})**")
+            
+            # 🎨 AI 감정 분석 엔진 (키워드 매칭 로직)
+            # 투자 심리에 영향을 주는 핵심 키워드들
+            pos_keywords = ['up', 'rise', 'buy', 'growth', 'profit', 'surpass', 'bull', 'gain', '상승', '이익', '돌파', '호재', '성장']
+            neg_keywords = ['down', 'drop', 'sell', 'loss', 'fall', 'bear', 'risk', '하락', '손실', '우려', '악재', '부진']
+            
+            # 감정 판별 로직
+            title_lower = title.lower()
+            if any(word in title_lower for word in pos_keywords):
+                sentiment = "🟢 호재성"
+                bg_color = "rgba(0, 255, 0, 0.1)" # 연한 초록색 배경
+            elif any(word in title_lower for word in neg_keywords):
+                sentiment = "🔴 주의요망"
+                bg_color = "rgba(255, 0, 0, 0.1)" # 연한 빨간색 배경
+            else:
+                sentiment = "⚪ 중립"
+                bg_color = "rgba(128, 128, 128, 0.1)" # 연한 회색 배경
+
+            # --- 뉴스 카드 디자인 ---
+            # HTML과 CSS를 활용해 증권사 앱 느낌의 카드를 만듭니다.
+            st.markdown(f"""
+                <div style="
+                    background-color: {bg_color}; 
+                    padding: 15px; 
+                    border-radius: 10px; 
+                    border-left: 5px solid {'green' if '🟢' in sentiment else 'red' if '🔴' in sentiment else 'gray'};
+                    margin-bottom: 10px;">
+                    <span style="font-size: 0.8rem; font-weight: bold;">{sentiment} | {publisher}</span><br>
+                    <a href="{link}" target="_blank" style="text-decoration: none; color: black; font-size: 1.1rem; font-weight: bold;">
+                        {title}
+                    </a>
+                </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.write("📢 현재 분석할 수 있는 새로운 뉴스가 없습니다.")
