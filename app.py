@@ -186,7 +186,7 @@ if st.button("✨ 실시간 뉴스 융합 심층 분석 시작하기", type="pri
                 """
                 
                 response = client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                    model=model="claude-3-haiku-20240307",
                     max_tokens=2000,
                     messages=[{"role": "user", "content": prompt_data}]
                 )
