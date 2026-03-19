@@ -19,7 +19,7 @@ class DividendInvestmentEngine:
             st.error("❌ API 키를 찾을 수 없습니다. .streamlit/secrets.toml 파일을 확인하세요.")
             st.stop()
             
-        self.model = "claude-3-5-sonnet-20241022" # 가장 안정적인 최신 모델
+        self.model = "claude-3-5-sonnet-latest" # 가장 안정적인 최신 모델
         self.workspace_dir = "Dividend_Securities_Workspace"
         
         # 지호가 만든 5단계 파일 리스트
