@@ -148,4 +148,43 @@ class HybridInvestmentEngine:
             except Exception as e:
                 all_reports[name] = f"분석 중 에러 발생: {e}"
                 
-            progress_bar.progress((
+            progress_bar.progress((i + 1) / len(self.pipeline_config))
+        return all_reports
+
+# --- 메인 실행부 ---
+engine = HybridInvestmentEngine()
+
+st.title("🏛️ Investment Terminal")
+st.write(f"Today is {datetime.now().strftime('%B %d, %Y')}")
+
+with st.sidebar:
+    st.header("Configure")
+    name = st.text_input("Company Name", "리얼티인컴")
+    ticker = st.text_input("Ticker Symbol", "O")
+    st.divider()
+    analyze_btn = st.button("Start Intelligence Analysis")
+
+if analyze_btn:
+    with st.spinner("Processing Intelligence..."):
+        signals = engine.get_hybrid_signals(ticker)
+        if signals:
+            st.markdown("### 📡 Real-time Intelligence")
+            c1, c2 = st.columns([1, 2])
+            c1.metric("Tech Score", f"{signals['tech_score']}%")
+            c2.info(signals['sentiment'])
+            
+            t1, t2 = st.tabs(["📊 Market Data", "🔍 Deep Analysis"])
+            with t1:
+                fig = go.Figure(data=[go.Scatter(x=signals['hist'].index, y=signals['hist']['Close'], line=dict(color='#0071E3', width=2))])
+                fig.update_layout(template="plotly_white", margin=dict(l=0, r=0, t=20, b=0), height=400)
+                st.plotly_chart(fig, use_container_width=True)
+                
+            with t2:
+                reports = engine.run_full_analysis(name, ticker, signals['sentiment'])
+                if reports:
+                    sub_tabs = st.tabs(list(reports.keys()))
+                    for idx, (n, c) in enumerate(reports.items()):
+                        with sub_tabs[idx]:
+                            st.markdown(c)
+else:
+    st.info("💡 사이드바에서 기업 정보를 입력하고 분석을 시작하세요.")
