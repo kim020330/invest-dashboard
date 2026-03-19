@@ -66,4 +66,81 @@ class JihoFullEngine:
             path = os.path.join(self.workspace_dir, f_name)
             with open(path, "r", encoding="utf-8") as f: instruction = f.read()
             resp = self.client.messages.create(model=self.model, max_tokens=3000, system=instruction, messages=[{"role": "user", "content": f"대상: {name}({ticker})\n상황: {context}"}])
-            reports[f_name] =
+            reports[f_name] = resp.content[0].text
+            prog.progress((i + 1) / len(files))
+        return reports
+
+    def get_market_briefing(self):
+        try:
+            search = yf.Search("Dividend Stocks", max_results=5)
+            titles = [n['title'] for n in search.news]
+            prompt = f"다음 뉴스 요약 브리핑을 3줄로 해줘:\n" + "\n".join(titles)
+            resp = self.client.messages.create(model=self.model, max_tokens=1000, messages=[{"role": "user", "content": prompt}])
+            return resp.content[0].text, search.news
+        except: return "뉴스를 가져오지 못했습니다.", []
+
+    def compare_assets(self, t1, t2):
+        s1, s2 = yf.Ticker(t1).info, yf.Ticker(t2).info
+        prompt = f"{t1}와 {t2} 중 배당 투자 관점에서 어디가 더 나은지 비교해줘."
+        resp = self.client.messages.create(model=self.model, max_tokens=2000, messages=[{"role": "user", "content": prompt}])
+        return resp.content[0].text, s1, s2
+
+# UI
+engine = JihoFullEngine()
+with st.sidebar:
+    st.title("🍏 Jiho Terminal")
+    page = st.radio("Navigation", ["Home & Analysis", "Portfolio Tracker", "Morning Briefing", "Versus Analysis"])
+
+if page == "Home & Analysis":
+    st.header("Intelligence Deep Analysis")
+    c1, c2 = st.columns(2)
+    name_in = c1.text_input("Company Name", "리얼티인컴")
+    ticker_in = c2.text_input("Ticker Symbol", "O")
+    
+    if st.button("Start Analysis"):
+        signals = engine.get_signals(ticker_in)
+        if signals:
+            curr_price = signals['info'].get('currentPrice', 0)
+            st.info(f"📡 AI Signal: {signals['sentiment']}")
+            m1, m2 = st.columns(2)
+            # 여기가 에러 났던 부분! 아주 깔끔하게 수정했어.
+            price_display = f"${curr_price:,.2f}" if ".KS" not in ticker_in else f"₩{curr_price:,.0f}"
+            m1.metric("Current Price", price_display)
+            m2.metric("Dividend Yield", f"{signals['info'].get('dividendYield', 0)*100:.2f}%")
+            
+            if st.button(f"Add {ticker_in} to Portfolio"):
+                st.session_state.portfolio.append({"Date": datetime.now().strftime("%Y-%m-%d"), "Ticker": ticker_in, "Price": price_display})
+                st.toast("추가 완료!")
+
+            t1, t2 = st.tabs(["📊 Market Chart", "🔍 Expert Reports"])
+            with t1:
+                fig = go.Figure(data=[go.Scatter(x=signals['hist'].index, y=signals['hist']['Close'], line=dict(color='#0071E3'))])
+                st.plotly_chart(fig, use_container_width=True)
+            with t2:
+                reports = engine.run_deep_analysis(name_in, ticker_in, signals['sentiment'])
+                for n, c in reports.items():
+                    with st.expander(f"📄 {n} 리포트"): st.markdown(c)
+
+elif page == "Portfolio Tracker":
+    st.header("My Strategic Holdings")
+    if st.session_state.portfolio:
+        st.table(pd.DataFrame(st.session_state.portfolio))
+        if st.button("Clear All"):
+            st.session_state.portfolio = []
+            st.rerun()
+    else: st.info("비어 있습니다.")
+
+elif page == "Morning Briefing":
+    st.header("AI Morning Briefing")
+    brief, news = engine.get_market_briefing()
+    st.success(brief)
+    for n in news: st.markdown(f"🔗 [{n['title']}]({n['link']})")
+
+elif page == "Versus Analysis":
+    st.header("Stock Versus Stock")
+    v1, v2 = st.columns(2)
+    t1 = v1.text_input("Ticker 1", "KO")
+    t2 = v2.text_input("Ticker 2", "PEP")
+    if st.button("Compare"):
+        res, s1, s2 = engine.compare_assets(t1, t2)
+        st.write(res)
