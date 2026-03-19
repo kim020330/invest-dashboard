@@ -16,7 +16,11 @@ class DividendInvestmentEngine:
             st.stop()
             
         # 404 에러가 나면 이 모델 이름을 하나씩 바꿔볼 거야
-        self.model = "claude-3-5-sonnet-20240620" 
+       # 1순위 추천: 가장 똑똑한 4.6 모델
+self.model = "claude-4-6-sonnet-latest" 
+
+# 만약 위 이름이 안 되면, 지호가 본 번호 그대로 명시:
+# self.model = "claude-4-6-sonnet-20260115" (워크벤치에서 확인한 날짜가 있다면) 
         self.workspace_dir = "Dividend_Securities_Workspace"
         
         # 분석 파이프라인 구성
