@@ -21,7 +21,6 @@ st.markdown("""
 # 2. 증권사 연결 설정 (정보 입력 필수!)
 KIS_KEY = "PSgiUu1bjrkWomUVvox8tsQtJPS71JHJeuPi"
 KIS_SECRET = "B1put3i5vYVCEiaqbvWdHgHh7oPPi/JSLEDTV3kvUEPS4WV10SuxYOth2mQh9vEjlzjY7QUwWT46ww3zz16tF0hwQOS9Z8iNqv9bcENmMPeshcvBMFN7j0mrhihgziFjffQWE2oBscFHaXQanfK57Z8YcdR9q66D0Inn2xXsiZZDYiMO8bU="
-acc_no = "50177946-01"
 ACC_NO = "50177946-01"
 
 @st.cache_resource
