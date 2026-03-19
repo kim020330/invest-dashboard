@@ -2,10 +2,10 @@ import streamlit as st
 from anthropic import Anthropic
 import os
 
-# 1. 페이지 설정
-st.set_page_config(page_title="지호의 배당주 분석 시스템", layout="wide", page_icon="📈")
+# 1. 페이지 레이아웃 설정
+st.set_page_config(page_title="지호의 배당주 분석 시스템", layout="wide", page_icon="🏢")
 
-# 2. 분석 엔진 클래스
+# 2. 분석 엔진 클래스 (Claude 4-6 규격 적용)
 class DividendInvestmentEngine:
     def __init__(self):
         # secrets.toml에서 키 로드
@@ -15,11 +15,11 @@ class DividendInvestmentEngine:
             st.error("❌ [.streamlit/secrets.toml] 파일에서 API 키를 찾을 수 없습니다.")
             st.stop()
             
-        # 지호가 워크벤치에서 확인한 최신 4-6 모델 적용
-        self.model = "claude-3-5-sonnet-20241022" 
+        # 워크벤치에서 확인한 4-6 모델명 적용
+        self.model = "claude-sonnet-4-6" 
         self.workspace_dir = "Dividend_Securities_Workspace"
         
-        # 분석 파이프라인 파일 목록
+        # 분석 파이프라인
         self.pipeline = [
             {"name": "01 핵심 철학", "file": "01_Core_Philosophy.md"},
             {"name": "02 매크로 분석", "file": "02_Macro_Analysis.md"},
@@ -43,33 +43,40 @@ class DividendInvestmentEngine:
         status_text = st.empty()
 
         for i, step in enumerate(self.pipeline):
-            status_text.text(f"⏳ {step['name']} 분석 중...")
+            status_text.text(f"⏳ {step['name']} 단계 분석 중 (엔진: {self.model})...")
             instruction = self._read_md_file(step["file"])
             
-            user_msg = f"기업명: {company_name}\n\n[이전 분석 요약]\n{context}\n\n위 흐름에 맞춰 '{step['name']}' 분석을 해줘."
+            user_msg = f"기업명: {company_name}\n\n[이전 분석 요약]\n{context}\n\n위 흐름에 맞춰 '{step['name']}' 분석을 수행해줘."
 
             try:
+                # 🛠️ 워크벤치에서 확인한 최신 규격으로 API 호출
                 response = self.client.messages.create(
                     model=self.model,
-                    max_tokens=3000,
+                    max_tokens=8000, # 분석용으로 충분한 토큰 설정
+                    temperature=0,
                     system=instruction,
-                    messages=[{"role": "user", "content": user_msg}]
+                    messages=[{"role": "user", "content": user_msg}],
+                    thinking={"type": "disabled"}, # 일단 생각 모드는 비활성화 (속도 중시)
                 )
+                
                 result = response.content[0].text
                 all_reports[step["name"]] = result
+                # 다음 단계를 위해 결과 요약 누적
                 context += f"[{step['name']}]: {result[:300]}...\n"
                 
             except Exception as e:
-                st.error(f"🚨 {step['name']} 단계 오류 발생!")
+                st.error(f"🚨 {step['name']} 단계에서 오류가 발생했습니다.")
                 st.code(f"Error: {str(e)}")
                 break
             
             progress_bar.progress((i + 1) / len(self.pipeline))
         
+        status_text.text("✅ 모든 분석이 완료되었습니다!")
         return all_reports
 
 # 3. UI 메인 실행부
 st.title("🏛️ 지호의 배당주 가상 증권사")
+st.caption("Claude 4-6 High-Effort Engine 가동 중")
 st.divider()
 
 engine = DividendInvestmentEngine()
@@ -83,8 +90,9 @@ if st.button("🚀 5단계 파이프라인 분석 가동"):
             tabs = st.tabs(list(results.keys()))
             for i, (name, content) in enumerate(results.items()):
                 with tabs[i]:
+                    st.markdown(f"### 📊 {name} 보고서")
                     st.markdown(content)
                     if i == 4:
-                        st.success("🎯 최종 투자의견 도출 완료")
+                        st.success("🎯 CIO 최종 투자의견 도출 완료")
     else:
         st.warning("기업명을 입력해주세요.")
