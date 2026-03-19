@@ -2,12 +2,13 @@ import streamlit as st
 from anthropic import Anthropic
 import yfinance as yf
 import plotly.graph_objects as go
+import plotly.express as px
 import os
 import pandas as pd
 from datetime import datetime
 
-# 1. 페이지 설정 및 Apple Style CSS 주입
-st.set_page_config(page_title="Jiho's Pro Terminal", layout="wide", page_icon="🍏")
+# 1. 페이지 설정 및 Apple Style CSS
+st.set_page_config(page_title="Jiho's Elite Terminal", layout="wide", page_icon="🍏")
 
 st.markdown("""
     <style>
@@ -23,157 +24,129 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. 세션 상태 초기화 (데이터 유지용)
-if 'portfolio' not in st.session_state:
-    st.session_state.portfolio = []
+# 2. 데이터 영구 저장 (CSV) 관련 함수
+PORTFOLIO_FILE = "jiho_portfolio.csv"
 
-class JihoFullEngine:
+def load_portfolio():
+    if os.path.exists(PORTFOLIO_FILE):
+        return pd.read_csv(PORTFOLIO_FILE)
+    return pd.DataFrame(columns=["Date", "Ticker", "Name", "Quantity", "Buy_Price"])
+
+def save_portfolio(df):
+    df.to_csv(PORTFOLIO_FILE, index=False)
+
+# 세션 상태 초기화
+if 'portfolio_df' not in st.session_state:
+    st.session_state.portfolio_df = load_portfolio()
+
+class JihoEliteEngine:
     def __init__(self):
-        if "ANTHROPIC_API_KEY" in st.secrets:
-            self.client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-        else:
-            st.error("API 키가 없습니다. .streamlit/secrets.toml을 확인하세요.")
-            st.stop()
-            
-        self.model = "claude-sonnet-4-6" 
+        self.client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+        self.model = "claude-sonnet-4-6"
         self.workspace_dir = "Dividend_Securities_Workspace"
-        self.pipeline_config = {
-            "01 핵심 철학": {"file": "01_Core.md", "guide": "배당 성장 투자 원칙을 기준으로 기업을 평가하십시오."},
-            "02 매크로 분석": {"file": "02_Macro.md", "guide": "현재 금리와 환율 등 거시경제 지표가 기업에 미치는 영향을 분석하십시오."},
-            "03 펀더멘탈": {"file": "03_Fund.md", "guide": "현금 흐름과 부채 비율 등 재무적 건전성을 분석하십시오."},
-            "04 리스크 관리": {"file": "04_Risk.md", "guide": "배당 삭감 가능성 및 시장 경쟁 리스크를 분석하십시오."},
-            "05 최종 결정 (CIO)": {"file": "05_CIO.md", "guide": "앞선 분석을 종합하여 매수/보류/매도 의견을 제시하십시오."}
-        }
-        self._ensure_setup()
 
-    def _ensure_setup(self):
-        if not os.path.exists(self.workspace_dir): os.makedirs(self.workspace_dir)
-        for config in self.pipeline_config.values():
-            path = os.path.join(self.workspace_dir, config["file"])
-            if not os.path.exists(path):
-                with open(path, "w", encoding="utf-8") as f: f.write(f"# 지침\n{config['guide']}")
-
-    # 기능 1: 하이브리드 시그널 (수치 + 뉴스)
-    def get_signals(self, ticker):
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            news = getattr(stock, 'news', [])
-            titles = [n.get('title') or "제목 없음" for n in news[:3]]
-            
-            prompt = f"{ticker} 뉴스 요약: {' / '.join(titles)}\n현재 투자 심리를 '긍정/중립/주의' 중 하나로 판별하고 이유를 써줘."
-            resp = self.client.messages.create(model=self.model, max_tokens=500, messages=[{"role": "user", "content": prompt}])
-            
-            return {
-                "sentiment": resp.content[0].text, 
-                "info": info, 
-                "hist": stock.history(period="1y"),
-                "yield": info.get('dividendYield', 0) * 100
-            }
-        except Exception as e:
-            st.error(f"데이터 로드 실패: {e}")
-            return None
-
-    # 기능 2: 5단계 심층 분석
-    def run_deep_analysis(self, name, ticker, context):
-        reports = {}
-        prog = st.progress(0)
-        for i, (step_name, config) in enumerate(self.pipeline_config.items()):
-            path = os.path.join(self.workspace_dir, config["file"])
-            with open(path, "r", encoding="utf-8") as f: instruction = f.read()
-            
-            resp = self.client.messages.create(
-                model=self.model, max_tokens=3000, system=instruction,
-                messages=[{"role": "user", "content": f"대상: {name}({ticker})\n상황: {context}"}]
-            )
-            reports[step_name] = resp.content[0].text
-            prog.progress((i + 1) / len(self.pipeline_config))
-        return reports
-
-    # 기능 3: 모닝 브리핑
-    def get_market_briefing(self):
-        search = yf.Search("Dividend Growth Stocks", max_results=5)
-        titles = [n['title'] for n in search.news]
-        prompt = f"다음 뉴스들을 바탕으로 오늘 배당주 투자자가 알아야 할 핵심 브리핑을 3줄로 요약해줘:\n" + "\n".join(titles)
-        resp = self.client.messages.create(model=self.model, max_tokens=1000, messages=[{"role": "user", "content": prompt}])
-        return resp.content[0].text, search.news
-
-    # 기능 4: 종목 비교
-    def compare_assets(self, t1, t2):
-        s1, s2 = yf.Ticker(t1).info, yf.Ticker(t2).info
-        prompt = f"종목 A({t1}, 배당 {s1.get('dividendYield',0)*100:.1f}%)와 종목 B({t2}, 배당 {s2.get('dividendYield',0)*100:.1f}%) 중 배당 성장 관점에서 어디가 더 유리한지 비교 분석해줘."
+    # [기능 3] 적정 주가 가치 평가 (Valuation Model)
+    def calculate_fair_value(self, ticker, info):
+        curr_price = info.get('currentPrice', 0)
+        eps = info.get('trailingEps', 0)
+        pe_ratio = info.get('trailingPE', 0)
+        forward_pe = info.get('forwardPE', 0)
+        div_yield = info.get('dividendYield', 0) * 100
+        
+        prompt = f"""
+        기업: {ticker}
+        현재가: ${curr_price}
+        EPS: {eps}
+        현재 P/E: {pe_ratio}
+        Forward P/E: {forward_pe}
+        배당수익률: {div_yield}%
+        
+        위 재무 데이터를 바탕으로 이 주식의 '적정 주가(Fair Value)'를 추정하고, 현재가 대비 저평가인지 고평가인지 분석해줘.
+        분석은 (1) 수익성 기반 가치, (2) 배당 수익률 기반 가치, (3) 최종 결론 순서로 작성해줘.
+        """
         resp = self.client.messages.create(model=self.model, max_tokens=2000, messages=[{"role": "user", "content": prompt}])
-        return resp.content[0].text, s1, s2
+        return resp.content[0].text
 
-# 3. UI 메인 로직
-engine = JihoFullEngine()
+    def get_basic_data(self, ticker):
+        stock = yf.Ticker(ticker)
+        return stock.info, stock.history(period="1y")
+
+# 3. UI 로직
+engine = JihoEliteEngine()
 
 with st.sidebar:
-    st.title("🍏 Jiho Terminal")
-    st.caption("AI-Powered Dividend Boutique")
-    page = st.radio("Navigation", ["Home & Analysis", "Portfolio Tracker", "Morning Briefing", "Versus Analysis"])
+    st.title("🏛️ Jiho Elite")
+    page = st.radio("Menu", ["Intelligence & Valuation", "Portfolio Analytics", "Global Briefing"])
     st.divider()
-    st.write("Logged in as: **Jiho Admin**")
+    st.write(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
 
-# 페이지 1: 분석 및 홈
-if page == "Home & Analysis":
-    st.header("Intelligence Deep Analysis")
-    c_in1, c_in2 = st.columns(2)
-    with c_in1: target_name = st.text_input("Company Name", "리얼티인컴")
-    with c_in2: target_ticker = st.text_input("Ticker Symbol", "O")
+# 페이지 1: 지능형 분석 및 가치 평가
+if page == "Intelligence & Valuation":
+    st.header("Stock Valuation Intelligence")
+    col_in1, col_in2 = st.columns(2)
+    with col_in1: t_ticker = st.text_input("Ticker Symbol", "AAPL")
+    with col_in2: t_qty = st.number_input("Purchase Quantity (Optional)", min_value=0, value=10)
     
-    if st.button("Start Analysis"):
-        signals = engine.get_signals(target_ticker)
-        if signals:
-            st.markdown("### 📡 Intelligence Signal")
-            st.info(signals['sentiment'])
+    if st.button("Run Professional Analysis"):
+        with st.spinner("가치 평가 모델 가동 중..."):
+            info, hist = engine.get_basic_data(t_ticker)
+            valuation_report = engine.calculate_fair_value(t_ticker, info)
             
-            col_a, col_b = st.columns(2)
-            col_a.metric("Dividend Yield", f"{signals['yield']:.2f}%")
-            if col_b.button(f"Add {target_ticker} to Portfolio"):
-                st.session_state.portfolio.append({"Date": datetime.now().strftime("%Y-%m-%d"), "Ticker": target_ticker, "Price": signals['info'].get('currentPrice')})
-                st.toast("포트폴리오에 추가되었습니다!")
+            # 상단 핵심 지표 카드
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Current Price", f"${info.get('currentPrice')}")
+            c2.metric("P/E Ratio", f"{info.get('trailingPE', 'N/A')}")
+            c3.metric("Dividend Yield", f"{info.get('dividendYield', 0)*100:.2f}%")
+            
+            # 포트폴리오 추가 기능
+            if st.button(f"Add {t_ticker} to Portfolio"):
+                new_data = {
+                    "Date": datetime.now().strftime("%Y-%m-%d"),
+                    "Ticker": t_ticker,
+                    "Name": info.get('shortName'),
+                    "Quantity": t_qty,
+                    "Buy_Price": info.get('currentPrice')
+                }
+                st.session_state.portfolio_df = pd.concat([st.session_state.portfolio_df, pd.DataFrame([new_data])], ignore_index=True)
+                save_portfolio(st.session_state.portfolio_df)
+                st.toast("포트폴리오가 안전하게 CSV에 저장되었습니다!")
 
-            t1, t2 = st.tabs(["📊 Market Data", "🔍 Deep Expert Reports"])
-            with t1:
-                fig = go.Figure(data=[go.Scatter(x=signals['hist'].index, y=signals['hist']['Close'], line=dict(color='#0071E3', width=2))])
-                fig.update_layout(template="plotly_white", margin=dict(l=0, r=0, t=20, b=0), height=400)
+            tab1, tab2 = st.tabs(["📊 Value Report", "📈 Market Performance"])
+            with tab1:
+                st.markdown(f"### 🎯 AI Intrinsic Value Analysis\n{valuation_report}")
+            with tab2:
+                fig = go.Figure(data=[go.Scatter(x=hist.index, y=hist['Close'], line=dict(color='#0071E3', width=2))])
+                fig.update_layout(template="plotly_white", height=400)
                 st.plotly_chart(fig, use_container_width=True)
-            with t2:
-                reports = engine.run_deep_analysis(target_name, target_ticker, signals['sentiment'])
-                sub_tabs = st.tabs(list(reports.keys()))
-                for i, (n, c) in enumerate(reports.items()):
-                    with sub_tabs[i]: st.markdown(c)
 
-# 페이지 2: 포트폴리오 관리
-elif page == "Portfolio Tracker":
-    st.header("My Strategic Holdings")
-    if st.session_state.portfolio:
-        st.table(pd.DataFrame(st.session_state.portfolio))
-        if st.button("Clear Portfolio"):
-            st.session_state.portfolio = []
-            st.rerun()
-    else:
-        st.info("담긴 종목이 없습니다. 분석 탭에서 마음에 드는 종목을 추가하세요.")
-
-# 페이지 3: 모닝 브리핑
-elif page == "Morning Briefing":
-    st.header("AI Morning Briefing")
-    with st.spinner("Analyzing Global News..."):
-        brief, news = engine.get_market_briefing()
-        st.success(brief)
-        st.divider()
-        for n in news: st.markdown(f"🔗 [{n['title']}]({n['link']})")
-
-# 페이지 4: 비교 분석
-elif page == "Versus Analysis":
-    st.header("Stock Versus Stock")
-    c_v1, c_v2 = st.columns(2)
-    with c_v1: v1 = st.text_input("Ticker 1", "KO")
-    with c_v2: v2 = st.text_input("Ticker 2", "PEP")
+# 페이지 2: 포트폴리오 분석 및 시각화
+elif page == "Portfolio Analytics":
+    st.header("Asset Allocation & Holdings")
+    df = st.session_state.portfolio_df
     
-    if st.button("Start Comparison"):
-        with st.spinner("Calculating..."):
-            res, s1, s2 = engine.compare_assets(v1, v2)
-            st.markdown(f"### 🥊 AI Verdict: {v1} vs {v2}")
-            st.write(res)
+    if not df.empty:
+        # [기능 2] 비중 시각화 (Pie Chart)
+        df['Total_Value'] = df['Quantity'] * df['Buy_Price']
+        
+        col_p1, col_p2 = st.columns([1, 1])
+        with col_p1:
+            st.markdown("#### Portfolio Weight")
+            fig_pie = px.pie(df, values='Total_Value', names='Ticker', hole=.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_pie.update_layout(showlegend=True, margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig_pie, use_container_width=True)
+            
+        with col_p2:
+            st.markdown("#### Holding Details")
+            st.dataframe(df[['Ticker', 'Quantity', 'Buy_Price', 'Total_Value']], use_container_width=True)
+            if st.button("Reset Portfolio"):
+                st.session_state.portfolio_df = pd.DataFrame(columns=["Date", "Ticker", "Name", "Quantity", "Buy_Price"])
+                save_portfolio(st.session_state.portfolio_df)
+                st.rerun()
+    else:
+        st.info("포트폴리오가 비어 있습니다. 'Valuation' 메뉴에서 종목을 추가하세요.")
+
+# 페이지 3: 글로벌 브리핑
+elif page == "Global Briefing":
+    st.header("Daily Market Pulse")
+    st.write("실시간 글로벌 배당주 뉴스 및 거시경제 브리핑이 제공되는 공간입니다.")
+    # (앞선 뉴스레터 로직을 여기에 동일하게 배치 가능)
