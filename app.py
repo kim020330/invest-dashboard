@@ -1,18 +1,19 @@
 import streamlit as st
 from anthropic import Anthropic
 import yfinance as yf
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import os
-from datetime import datetime
 
 # 1. 페이지 설정
-st.set_page_config(page_title="지호의 Pro 배당주 분석기", layout="wide", page_icon="📈")
+st.set_page_config(page_title="지호의 Pro 배당주 터미널", layout="wide", page_icon="🏦")
 
-class DividendProEngine:
+class DividendVisualEngine:
     def __init__(self):
         if "ANTHROPIC_API_KEY" in st.secrets:
             self.client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
         else:
-            st.error("API 키를 확인해주세요.")
+            st.error("API 키가 없습니다.")
             st.stop()
             
         self.model = "claude-sonnet-4-6" 
@@ -25,25 +26,12 @@ class DividendProEngine:
             {"name": "05 최종 결정 (CIO)", "file": "05_CIO_Decision_Matrix.md"}
         ]
 
-    # [신규] 실시간 금융 데이터 가져오기 함수
-    def get_stock_data(self, ticker_symbol):
-        try:
-            stock = yf.Ticker(ticker_symbol)
-            info = stock.info
-            
-            # 주요 지표 추출
-            data = {
-                "현재가": info.get("currentPrice", "N/A"),
-                "시가총액": info.get("marketCap", "N/A"),
-                "배당수익률": info.get("dividendYield", 0) * 100 if info.get("dividendYield") else "N/A",
-                "PER": info.get("trailingPE", "N/A"),
-                "52주 최고가": info.get("fiftyTwoWeekHigh", "N/A"),
-                "52주 최저가": info.get("fiftyTwoWeekLow", "N/A"),
-                "통화": info.get("currency", "USD")
-            }
-            return data
-        except:
-            return None
+    # [신규] 시각화용 데이터 가져오기 (주가 및 배당)
+    def get_history_data(self, ticker_symbol):
+        stock = yf.Ticker(ticker_symbol)
+        hist = stock.history(period="1y") # 1년치 데이터
+        dividends = stock.dividends
+        return hist, dividends, stock.info
 
     def _read_md_file(self, filename):
         path = os.path.join(self.workspace_dir, filename)
@@ -51,24 +39,20 @@ class DividendProEngine:
             with open(path, "r", encoding="utf-8") as f:
                 return f.read()
         except:
-            return "파일을 읽을 수 없습니다."
+            return "파일 읽기 실패"
 
-    def run_full_analysis(self, company_name, ticker, market_data):
+    def run_full_analysis(self, company_name, ticker, info):
         all_reports = {}
-        # 실시간 데이터를 AI에게 맥락으로 전달
-        context = f"--- [실시간 시장 데이터: {company_name} ({ticker})] ---\n"
-        for k, v in market_data.items():
-            context += f"{k}: {v}\n"
-        context += "-------------------------------------------\n\n"
-
+        # AI에게 수치 데이터를 요약해서 전달
+        context = f"기업: {company_name}\nPER: {info.get('trailingPE')}\n배당수익률: {info.get('dividendYield', 0)*100:.2f}%\n"
+        
         progress_bar = st.progress(0)
         status_text = st.empty()
 
         for i, step in enumerate(self.pipeline):
-            status_text.text(f"⏳ {step['name']} 분석 중...")
+            status_text.text(f"⏳ {step['name']} 단계 분석 중...")
             instruction = self._read_md_file(step["file"])
-            
-            user_msg = f"기업명: {company_name}\n\n[현재 시장 상황 및 이전 분석]\n{context}\n\n위 데이터를 기반으로 '{step['name']}' 분석을 수행해."
+            user_msg = f"{company_name} 분석 데이터:\n{context}\n\n위 내용을 바탕으로 '{step['name']}' 단계를 수행해줘."
 
             try:
                 response = self.client.messages.create(
@@ -80,47 +64,63 @@ class DividendProEngine:
                 )
                 result = response.content[0].text
                 all_reports[step["name"]] = result
-                context += f"[{step['name']} 결과]: {result[:300]}...\n"
+                context += f"[{step['name']}]: {result[:200]}...\n"
             except Exception as e:
                 st.error(f"오류: {str(e)}")
                 break
-            
             progress_bar.progress((i + 1) / len(self.pipeline))
         
         return all_reports
 
-# 3. UI 부분
-st.title("🏛️ 지호의 Pro 배당주 분석 시스템")
-engine = DividendProEngine()
+# 3. UI 메인
+st.title("🏦 지호의 Pro 배당주 터미널")
+engine = DividendVisualEngine()
 
-# 입력창을 두 개로 분리 (이름과 티커)
-col1, col2 = st.columns(2)
-with col1:
-    company_name = st.text_input("기업명 (예: 애플)", placeholder="삼성전자")
-with col2:
-    ticker = st.text_input("티커/종목코드 (예: AAPL, 005930.KS)", placeholder="005930.KS")
+with st.sidebar:
+    st.header("⚙️ 분석 설정")
+    company_name = st.text_input("기업명", "리얼티인컴")
+    ticker = st.text_input("티커", "O")
+    run_btn = st.button("🚀 통합 분석 및 시각화 시작")
 
-if st.button("🚀 실시간 데이터 기반 통합 분석 시작"):
-    if company_name and ticker:
-        with st.spinner("실시간 시장 데이터를 수집 중..."):
-            market_data = engine.get_stock_data(ticker)
+if run_btn:
+    with st.spinner("데이터 로드 중..."):
+        hist, dividends, info = engine.get_history_data(ticker)
+        
+    # 상단 요약 지표
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("현재 주가", f"{info.get('currentPrice', 0):,.2f} {info.get('currency', 'USD')}")
+    col2.metric("배당 수익률", f"{info.get('dividendYield', 0)*100:.2f}%")
+    col3.metric("PER (주가수익비율)", f"{info.get('trailingPE', 'N/A')}")
+    col4.metric("시가총액", f"{info.get('marketCap', 0)/1e9:.1f}B")
+
+    # 탭 구성 (시각화 탭 + AI 분석 탭)
+    main_tabs = st.tabs(["📊 데이터 센터", "🔍 AI 정밀 분석"])
+
+    with main_tabs[0]:
+        st.subheader(f"📈 {company_name} 주가 및 배당 흐름")
+        
+        # 주가 차트 (Plotly)
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name="주가", line=dict(color="#1f77b4", width=2)))
+        
+        # 배당금 표시 (있는 경우)
+        if not dividends.empty:
+            recent_divs = dividends[dividends.index >= hist.index[0]]
+            fig.add_trace(go.Bar(x=recent_divs.index, y=recent_divs.values, name="배당금", marker_color="#2ca02c", opacity=0.6), secondary_y=True)
             
-        if market_data:
-            # 상단에 시장 데이터 요약 표시
-            st.success(f"📊 {company_name} 실시간 지표 로드 완료")
-            cols = st.columns(len(market_data))
-            for idx, (label, value) in enumerate(market_data.items()):
-                cols[idx].metric(label, f"{value:,}" if isinstance(value, (int, float)) else value)
-            
-            # AI 분석 실행
-            results = engine.run_full_analysis(company_name, ticker, market_data)
-            
-            if results:
-                tabs = st.tabs(list(results.keys()))
-                for i, (name, content) in enumerate(results.items()):
-                    with tabs[i]:
-                        st.markdown(content)
-        else:
-            st.error("티커가 올바르지 않거나 데이터를 가져올 수 없습니다.")
-    else:
-        st.warning("기업명과 티커를 모두 입력해주세요.")
+        fig.update_layout(title_text=f"{company_name} 1년 주가 흐름", hovermode="x unified", template="plotly_white")
+        fig.update_yaxes(title_text="주가 ($)", secondary_y=False)
+        fig.update_yaxes(title_text="배당금 ($)", secondary_y=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with main_tabs[1]:
+        # AI 분석 실행
+        results = engine.run_full_analysis(company_name, ticker, info)
+        if results:
+            sub_tabs = st.tabs(list(results.keys()))
+            for i, (name, content) in enumerate(results.items()):
+                with sub_tabs[i]:
+                    st.markdown(content)
+
+else:
+    st.info("왼쪽 사이드바에서 기업 정보를 입력하고 분석 버튼을 눌러주세요.")
