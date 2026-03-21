@@ -22,10 +22,10 @@ st.markdown("""
 # 🔥 10초 자동 갱신
 st_autorefresh(interval=10000, key="f5_refresh")
 
-# 2. 증권사 연결 설정
-KIS_KEY = "PSgiUu1bjrkWomUVvox8tsQtJPS71JHJeuPi"
-KIS_SECRET = "B1put3i5vYVCEiaqbvWdHgHh7oPPi/JSLEDTV3kvUEPS4WV10SuxYOth2mQh9vEjlzjY7QUwWT46ww3zz16tF0hwQOS9Z8iNqv9bcENmMPeshcvBMFN7j0mrhihgziFjffQWE2oBscFHaXQanfK57Z8YcdR9q66D0Inn2xXsiZZDYiMO8bU="
-ACC_NO = "50177946-01"
+# 2. 증권사 연결 설정 (.streamlit/secrets.toml에서 읽어옴)
+KIS_KEY    = st.secrets["KIS_APP_KEY"]
+KIS_SECRET = st.secrets["KIS_APP_SECRET"]
+ACC_NO     = st.secrets["KIS_ACCOUNT"]
 
 @st.cache_resource
 def get_broker():
