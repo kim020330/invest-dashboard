@@ -550,7 +550,7 @@ elif page == '🤖 AI 전략실':
                     ticktext=['0', '30', '50', '70', '100'],
                     tickfont=dict(color='#4A4A6A', size=8),
                     tickwidth=0,
-                    tickcolor='transparent',
+                    tickcolor='rgba(0,0,0,0)',
                 ),
                 bar=dict(color=bar_color, thickness=0.55),
                 bgcolor='#0D0D0F',
@@ -623,7 +623,7 @@ elif page == '🤖 AI 전략실':
     apply_theme(fig_heat)
     fig_heat.update_layout(
         height=220,
-        yaxis=dict(tickfont=dict(color='#A0A0C0', size=11), gridcolor='transparent'),
+        yaxis=dict(tickfont=dict(color='#A0A0C0', size=11), gridcolor='rgba(0,0,0,0)'),
     )
     st.plotly_chart(fig_heat, use_container_width=True)
 
